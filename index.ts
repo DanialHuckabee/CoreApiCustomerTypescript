@@ -21,7 +21,7 @@ app.use(express.json())
 app.use(cors())
 const port = 3000
 
-if (!apiKey || apiKey === "" || apiKey === null || apiKey === undefined) {
+if (!apiKey || apiKey === null || apiKey === undefined) {
     console.error("API Key is not set")
     process.exit(1)
 }
@@ -92,7 +92,7 @@ app.get("/Onaylarim/VerifySignaturesOnOnaylarimApi", async (req, res) => {
     await verifySignaturesOnOnaylarimApi(res)
 })
 
-app.listen(port, () => {
+app.listen(port, "0.0.0.0", () => {
     console.log(`App listening on port ${port}`)
 })
 
@@ -112,7 +112,7 @@ const createStateOnOnaylarimHandler = async (request: CreateStateOnOnaylarimApiR
 
     try {
         if (request.signatureType === "cades") {
-            const fileData = await fs.readFile(`${process.cwd()}\\Resources\\2023-04-14_Api_Development.log`)
+            const fileData = await fs.readFile(`${process.cwd()}/Resources/sample.pdf`)
 
             const signStepOneCoreResult = await client.post<ApiResult<SignStepOneCadesCoreResult>>(
                 "/CoreApiCades/SignStepOneCadesCore",
@@ -131,14 +131,46 @@ const createStateOnOnaylarimHandler = async (request: CreateStateOnOnaylarimApiR
                 }
             )
 
-            result.keyID = signStepOneCoreResult.data.result.keyID
-            result.keySecret = signStepOneCoreResult.data.result.keySecret
-            result.state = signStepOneCoreResult.data.result.state
-            result.operationId = operationId
+            if (!signStepOneCoreResult.data.error) {
+                result.keyID = signStepOneCoreResult.data.result.keyID
+                result.keySecret = signStepOneCoreResult.data.result.keySecret
+                result.state = signStepOneCoreResult.data.result.state
+                result.operationId = operationId
+            } else {
+                result.error = signStepOneCoreResult.data.error
+            }
+        } else if (request.signatureType === "xades") {
+            const fileData = await fs.readFile(`${process.cwd()}/Resources/sample.xml`)
+
+            const signStepOneCoreResult = await client.post<ApiResult<SignStepOneXadesCoreResult>>(
+                "/CoreApiXades/SignStepOneXadesCore",
+                new SignStepOneCadesCoreRequest({
+                    cerBytes: request.certificate,
+                    fileData: fileData.toString("base64"),
+                    signatureIndex: 0,
+                    operationId: operationId,
+                    requestId: uuid().replace("-", "").substring(0, 21),
+                    displayLanguage: "en"
+                }),
+                {
+                    headers: {
+                        "X-API-KEY": apiKey
+                    }
+                }
+            )
+
+            if (!signStepOneCoreResult.data.error) {
+                result.keyID = signStepOneCoreResult.data.result.keyID
+                result.keySecret = signStepOneCoreResult.data.result.keySecret
+                result.state = signStepOneCoreResult.data.result.state
+                result.operationId = operationId
+            } else {
+                result.error = signStepOneCoreResult.data.error
+            }
         } else if (request.signatureType === "pades") {
             try {
-                const fileData = await fs.readFile(`${process.cwd()}\\Resources\\sample.pdf`)
-                const signatureWidgetBackground = await fs.readFile(`${process.cwd()}\\Resources\\Signature011.jpg`)
+                const fileData = await fs.readFile(`${process.cwd()}/Resources/sample.pdf`)
+                const signatureWidgetBackground = await fs.readFile(`${process.cwd()}/Resources/Signature011.jpg`)
 
                 const uploadFileBeforeOperation = false
 
@@ -171,7 +203,7 @@ const createStateOnOnaylarimHandler = async (request: CreateStateOnOnaylarimApiR
                 const data = new SignStepOnePadesCoreRequest({
                     cerBytes: request.certificate,
                     fileData: uploadFileBeforeOperation ? "" : fileData.toString("base64"),
-                    signatureIndex: 1,
+                    signatureIndex: 0,
                     operationId: operationId,
                     requestId: uuid().replace("-", "").substring(0, 21),
                     displayLanguage: "en",
@@ -230,13 +262,13 @@ const createStateOnOnaylarimHandler = async (request: CreateStateOnOnaylarimApiR
                     })
                 })
 
-                console.log(JSON.stringify(data))
-
                 const signStepOneCoreResult = await client.post<ApiResult<SignStepOnePadesCoreResult>>("/CoreApiPades/SignStepOnePadesCore", data, {
                     headers: {
                         "X-API-KEY": apiKey
                     }
                 })
+
+                console.log(signStepOneCoreResult.data)
 
                 if (!signStepOneCoreResult.data.error) {
                     result.keyID = signStepOneCoreResult.data.result.keyID
@@ -249,8 +281,6 @@ const createStateOnOnaylarimHandler = async (request: CreateStateOnOnaylarimApiR
             } catch (error) {
                 console.log("ERROR", error)
             }
-
-            console.log("ewıoquhewqhuıewhqeuhwqehuwquheqwuho")
 
             return result
         }
@@ -270,42 +300,65 @@ const finishSign = async (request: FinishSignRequest): Promise<FinishSignResult>
 
     try {
         if (request.signatureType === "cades") {
-            const signStepOneUploadFileResult = await client.post<ApiResult<SignStepThreeCadesCoreResult>>(
-                "/CoreApiCades/signStepThreeCadesCore",
-                new SignStepThreeCadesCoreRequest({
-                    signedData: request.signedData,
-                    keyId: request.keyId,
-                    keySecret: request.keySecret,
-                    operationId: request.operationId,
-                    requestId: uuid().replace("-", "").substring(0, 21),
-                    displayLanguage: "en"
-                }),
-                {
-                    headers: {
-                        "X-API-KEY": apiKey
-                    }
+            let data = new SignStepThreeCadesCoreRequest({
+                signedData: request.signedData,
+                keyId: request.keyId,
+                keySecret: request.keySecret,
+                operationId: request.operationId,
+                requestId: uuid().replace("-", "").substring(0, 21),
+                displayLanguage: "en"
+            })
+
+            console.log(data)
+
+            const signStepOneUploadFileResult = await client.post<ApiResult<SignStepThreeCadesCoreResult>>("/CoreApiCades/signStepThreeCadesCore", data, {
+                headers: {
+                    "X-API-KEY": apiKey
                 }
-            )
+            })
+
+            console.log(signStepOneUploadFileResult.data)
 
             result.isSuccess = signStepOneUploadFileResult.data.result.isSuccess
-        } else if (request.signatureType === "pades") {
-            const signStepOneUploadFileResult = await client.post<ApiResult<SignStepThreePadesCoreResult>>(
-                "/CoreApiPades/signStepThreePadesCore",
-                new SignStepThreePadesCoreRequest({
-                    signedData: request.signedData,
-                    keyId: request.keyId,
-                    dontUpgradeToLtv: request.dontUpgradeToLtv,
-                    keySecret: request.keySecret,
-                    operationId: request.operationId,
-                    requestId: uuid().replace("-", "").substring(0, 21),
-                    displayLanguage: "en"
-                }),
-                {
-                    headers: {
-                        "X-API-KEY": apiKey
-                    }
+        } else if (request.signatureType === "xades") {
+            let data = new SignStepThreeCadesCoreRequest({
+                signedData: request.signedData,
+                keyId: request.keyId,
+                keySecret: request.keySecret,
+                operationId: request.operationId,
+                requestId: uuid().replace("-", "").substring(0, 21),
+                displayLanguage: "en"
+            })
+
+            console.log(data)
+
+            const signStepThreeResult = await client.post<ApiResult<SignStepThreeXadesCoreResult>>("/CoreApiXades/signStepThreeXadesCore", data, {
+                headers: {
+                    "X-API-KEY": apiKey
                 }
-            )
+            })
+
+            console.log(signStepThreeResult.data)
+
+            result.isSuccess = signStepThreeResult.data.result.isSuccess
+        } else if (request.signatureType === "pades") {
+            let data = new SignStepThreePadesCoreRequest({
+                signedData: request.signedData,
+                keyId: request.keyId,
+                dontUpgradeToLtv: request.dontUpgradeToLtv,
+                keySecret: request.keySecret,
+                operationId: request.operationId,
+                requestId: uuid().replace("-", "").substring(0, 21),
+                displayLanguage: "en"
+            })
+
+            console.log(data)
+
+            const signStepOneUploadFileResult = await client.post<ApiResult<SignStepThreePadesCoreResult>>("/CoreApiPades/signStepThreePadesCore", data, {
+                headers: {
+                    "X-API-KEY": apiKey
+                }
+            })
 
             result.isSuccess = signStepOneUploadFileResult.data.result.isSuccess
         }
@@ -323,7 +376,7 @@ const mobileSign = async (request: MobileSignRequest): Promise<MobilSignResult> 
     }
 
     if (request.signatureType == "cades") {
-        const fileData = await fs.readFile(`${process.cwd()}\\Resources\\sample.pdf`)
+        const fileData = await fs.readFile(`${process.cwd()}/Resources/sample.pdf`)
         try {
             var signStepOneCoreResult = await client.post<ApiResult<SignStepOneCoreInternalForCadesMobileResult>>(
                 `/CoreApiCadesMobile/SignStepOneCadesMobileCore`,
@@ -354,32 +407,64 @@ const mobileSign = async (request: MobileSignRequest): Promise<MobilSignResult> 
             console.log("ERROR", error)
             result.error = error as string
         }
-    } else if (request.signatureType === "pades") {
-        const fileData = await fs.readFile(`${process.cwd()}\\Resources\\sample.pdf`)
+    } else if (request.signatureType === "xades") {
+        const fileData = await fs.readFile(`${process.cwd()}/Resources/sample.pdf`)
         try {
-            var signStepOneCoreResult = await client.post<ApiResult<SignStepOneCoreInternalForPadesMobileResult>>(
-                `/CoreApiPadesMobile/SignStepOnePadesMobileCore`,
-                new SignStepOnePadesMobileCoreRequest({
+            var signStepOneCoreResult = await client.post<ApiResult<SignStepOneCoreInternalForXadesMobileResult>>(
+                `/CoreApiXadesMobile/SignStepOneXadesMobileCore`,
+                new SignStepOneCadesMobileCoreRequest({
                     fileData: fileData.toString("base64"),
                     signatureIndex: 0,
                     operationId: request.operationId,
                     requestId: uuid().replace("-", "").substring(0, 21),
                     displayLanguage: "en",
-                    verificationInfo: new VerificationInfo({
-                        text: "Bu belge 5070 sayılı elektronik imza kanununa göre güvenli elektronik imza ile imzalanmıştır. Belgeye\r\nhttps://localhost:8082 adresinden 97275466-4A90128E46284E3181CF21020554BFEC452DBDE73",
-                        width: 0.8,
-                        height: 0.1,
-                        left: 0.1,
-                        bottom: 0.03,
-                        transformOrigin: "left bottom"
-                    }),
-                    qrCodeInfo: new QrCodeInfo({
-                        text: "google.com",
-                        width: 0.1,
-                        right: 0.03,
-                        top: 0.02,
-                        transformOrigin: "right top"
-                    }),
+                    phoneNumber: request.phoneNumber,
+                    operator: request.operator,
+                    userPrompt: "CoreAPI ile belge imzalayacaksınız.",
+                    citizenshipNo: request.citizenshipNo
+                }),
+                {
+                    headers: {
+                        "X-API-KEY": apiKey
+                    }
+                }
+            )
+
+            if (signStepOneCoreResult.data.error) {
+                result.error = signStepOneCoreResult.data.error
+            } else {
+                result.isSuccess = signStepOneCoreResult.data.result.isSuccess
+            }
+        } catch (error) {
+            console.log("ERROR", error)
+            result.error = error as string
+        }
+    } else if (request.signatureType === "pades") {
+        const fileData = await fs.readFile(`${process.cwd()}/Resources/sample.pdf`)
+        try {
+            var signStepOneCoreResult = await client.post<ApiResult<SignStepOneCoreInternalForPadesMobileResult>>(
+                `/CoreApiPadesMobile/SignStepOnePadesMobileCore`,
+                new SignStepOnePadesMobileCoreRequest({
+                    fileData: fileData.toString("base64"),
+                    signatureIndex: 1,
+                    operationId: request.operationId,
+                    requestId: uuid().replace("-", "").substring(0, 21),
+                    displayLanguage: "en",
+                    // verificationInfo: new VerificationInfo({
+                    //     text: "Bu belge 5070 sayılı elektronik imza kanununa göre güvenli elektronik imza ile imzalanmıştır. Belgeye\r\nhttps://localhost:8082 adresinden 97275466-4A90128E46284E3181CF21020554BFEC452DBDE73",
+                    //     width: 0.8,
+                    //     height: 0.1,
+                    //     left: 0.1,
+                    //     bottom: 0.03,
+                    //     transformOrigin: "left bottom"
+                    // }),
+                    // qrCodeInfo: new QrCodeInfo({
+                    //     text: "google.com",
+                    //     width: 0.1,
+                    //     right: 0.03,
+                    //     top: 0.02,
+                    //     transformOrigin: "right top"
+                    // }),
                     phoneNumber: request.phoneNumber,
                     operator: request.operator,
                     userPrompt: "CoreAPI ile belge imzalayacaksınız.",
@@ -456,7 +541,7 @@ const downloadSignedFileFromOnaylarimApi = async (operationId: string, res: expr
 
         console.log("Downloaded", downloadSignedFileCoreResult.data.result)
 
-        const filePath = `${process.cwd()}\\Resources\\${downloadSignedFileCoreResult.data.result.fileName}.imz` // Replace with the desired file
+        const filePath = `${process.cwd()}/Resources/${downloadSignedFileCoreResult.data.result.fileName}.imz` // Replace with the desired file
         await fs.writeFile(filePath, Buffer.from(downloadSignedFileCoreResult.data.result.fileData, "base64")).then(() => {
             res.contentType("application/octet-stream")
             res.sendFile(filePath)
@@ -472,7 +557,7 @@ const downloadSignedFileFromOnaylarimApi = async (operationId: string, res: expr
 const convertToPdf = async (res: express.Response) => {
     try {
         // File can be get from request or file system
-        const fileData = await fs.readFile(`${process.cwd()}\\Resources\\yeni proje.docx`)
+        const fileData = await fs.readFile(`${process.cwd()}/Resources/yeni proje.docx`)
 
         var downloadSignedFileCoreResult = await client.post<ApiResult<ConvertToPdfCoreResult>>(
             "/CoreApiPdf/ConvertToPdfCore",
@@ -490,7 +575,7 @@ const convertToPdf = async (res: express.Response) => {
             }
         )
 
-        const filePath = `${process.cwd()}\\Resources\\converted.pdf` // Replace with the desired file
+        const filePath = `${process.cwd()}/Resources/converted.pdf` // Replace with the desired file
         await fs.writeFile(filePath, Buffer.from(downloadSignedFileCoreResult.data.result.fileData, "base64"))
 
         res.sendFile(filePath)
@@ -505,7 +590,7 @@ const convertToPdf = async (res: express.Response) => {
 const addLayers = async (res: express.Response) => {
     try {
         // File can be get from request or file system
-        const fileData = await fs.readFile(`${process.cwd()}\\Resources\\sample.pdf`)
+        const fileData = await fs.readFile(`${process.cwd()}/Resources/sample.pdf`)
 
         var downloadSignedFileCoreResult = await client.post<ApiResult<AddLayersCoreResult>>(
             "/CoreApiPdf/AddLayersCore",
@@ -538,7 +623,7 @@ const addLayers = async (res: express.Response) => {
             }
         )
 
-        const filePath = `${process.cwd()}\\Resources\\pdf000.pdf` // Replace with the desired file
+        const filePath = `${process.cwd()}/Resources/pdf000.pdf` // Replace with the desired file
         await fs.writeFile(filePath, Buffer.from(downloadSignedFileCoreResult.data.result.fileData, "base64"))
 
         res.sendFile(filePath)
@@ -557,10 +642,10 @@ const upgradePades = async (res: express.Response) => {
     try {
         // File can be get from request or file system
 
-        const fileData = await fs.readFile(`${process.cwd()}\\Resources\\cok imzali.pdf`)
+        const fileData = await fs.readFile(`${process.cwd()}/Resources/PrimeApi7_EE.imz`)
 
         const formData = new FormData()
-        formData.append("file", new Blob([fileData]), "cok imzali.pdf")
+        formData.append("file", new Blob([fileData]), "imzali_belge_for_upgrade.pdf")
 
         signStepOneUploadFileResult = await client.post<ApiResult<SignStepOneUploadFileResult>>("/CoreApiPades/SignStepOneUploadFile", formData, {
             headers: {
@@ -624,10 +709,10 @@ const upgradeCades = async (res: express.Response) => {
     try {
         // File can be get from request or file system
 
-        const fileData = await fs.readFile(`${process.cwd()}\\Resources\\dosya.imz`)
+        const fileData = await fs.readFile(`${process.cwd()}/Resources/bes_dosya.imz`)
 
         const formData = new FormData()
-        formData.append("file", new Blob([fileData]), "dosya.imz")
+        formData.append("file", new Blob([fileData]), "bes_dosya.imz")
 
         signStepOneUploadFileResult = await client.post<ApiResult<SignStepOneUploadFileResult>>("/CoreApiPades/SignStepOneUploadFile", formData, {
             headers: {
@@ -696,7 +781,7 @@ const verifySignaturesOnOnaylarimApi = async (res: express.Response) => {
 
     var operationId = uuid()
 
-    const fileData = await fs.readFile(`${process.cwd()}\\Resources\\cok imzali.pdf`)
+    const fileData = await fs.readFile(`${process.cwd()}/Resources/cok imzali.pdf`)
 
     const formData = new FormData()
     formData.append("file", new Blob([fileData]), "cok imzali.pdf")
@@ -898,11 +983,21 @@ export class SignStepOneCadesCoreResult {
     keySecret: string
 }
 
+export class SignStepOneXadesCoreResult {
+    state: string
+    keyID: string
+    keySecret: string
+}
+
 export class SignStepOneCoreInternalForPadesMobileResult {
     isSuccess: boolean
 }
 
 export class SignStepOneCoreInternalForCadesMobileResult {
+    isSuccess: boolean
+}
+
+export class SignStepOneCoreInternalForXadesMobileResult {
     isSuccess: boolean
 }
 
@@ -987,7 +1082,7 @@ export class SignStepOnePadesCoreResult {
     state: string
     keyID: string
     keySecret: string
-    error?: any
+    error?: string
 }
 
 export class SignStepOneRequestCoordinates {
@@ -1004,8 +1099,23 @@ export class SignStepThreeCadesCoreResult {
     isSuccess: boolean
 }
 
+export class SignStepThreeXadesCoreResult {
+    isSuccess: boolean
+}
+
 export class SignStepThreeCadesCoreRequest extends BaseRequest {
     constructor(props: Partial<SignStepThreeCadesCoreRequest> = {}) {
+        super()
+        Object.assign(this, props)
+    }
+    signedData: string
+    keyId: string
+    keySecret: string
+    operationId: string
+}
+
+export class SignStepThreeXadesCoreRequest extends BaseRequest {
+    constructor(props: Partial<SignStepThreeXadesCoreRequest> = {}) {
         super()
         Object.assign(this, props)
     }
